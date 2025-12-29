@@ -20,14 +20,14 @@ jobs:
       run: |
         curl -LSs "https://raw.githubusercontent.com/Poko-Apps/MemKernel/main/kernel/setup.sh" | bash -s M hazem
 
-    # FIX: Merge the device specific config (Vili) into the base config (Lahaina)
+    # FIX: Merge Base + Xiaomi Common + Device Config
     - name: Merge Configs
       run: |
-        # Append the Xiaomi 11T Pro (Vili) fragment to the main Snapdragon 888 (Lahaina) defconfig
-        cat arch/arm64/configs/vendor/vili_QGKI.config >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
+        # Layer 2: Add Xiaomi Common features (Fixes "undefined symbol" errors)
+        cat arch/arm64/configs/vendor/xiaomi_QGKI.config >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
         
-        # Verify it worked by checking for one of the missing symbols
-        grep "CONFIG_MI_DISP" arch/arm64/configs/vendor/lahaina-qgki_defconfig || echo "Warning: Config merge might have failed"
+        # Layer 3: Add Vili (11T Pro) specific features
+        cat arch/arm64/configs/vendor/vili_QGKI.config >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
 
     - name: Android kernel build
       uses: lemniskett/android-kernel-actions@master
