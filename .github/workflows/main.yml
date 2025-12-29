@@ -18,15 +18,19 @@ jobs:
 
     - name: Set up MemKernel as a module (M-OUT) with specified name
       run: |
-        curl -LSs "https://raw.githubusercontent.com/Poko-Apps/MemKernel/main/kernel/setup.sh" | bash -s M
+        curl -LSs "https://raw.githubusercontent.com/Poko-Apps/MemKernel/main/kernel/setup.sh" | bash -s M hazem
 
     - name: Merge Configs
       run: |
-        # 1. Add Xiaomi Common features (Fixes "undefined symbol" errors)
+        # 1. Add Xiaomi Common features
         cat arch/arm64/configs/vendor/xiaomi_QGKI.config >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
         
         # 2. Add Vili (11T Pro) specific features
         cat arch/arm64/configs/vendor/vili_QGKI.config >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
+
+        # 3. FIX: Manually ensure MemKernel is enabled in the CORRECT config file
+        echo "CONFIG_MEMKERNEL=m" >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
+        echo "CONFIG_MEMKERNEL_DRIVER=m" >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
 
     - name: Android kernel build
       uses: lemniskett/android-kernel-actions@master
@@ -37,9 +41,15 @@ jobs:
         arch: arm64
         compiler: clang/12
         defconfig: vendor/lahaina-qgki_defconfig
-        image: Image.gz-dtb
+        # FIX: Added 'modules' to force the driver build
+        image: Image.gz-dtb modules
 
-    # UPDATED: This step now searches recursively for your files
+    # Debugging step: Check if the file exists before uploading
+    - name: Check output
+      run: |
+        echo "Searching for .ko files..."
+        find out -name "*.ko"
+
     - name: Upload Kernel and Module
       uses: actions/upload-artifact@v4
       with:
