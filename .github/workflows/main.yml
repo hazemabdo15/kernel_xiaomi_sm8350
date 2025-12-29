@@ -22,15 +22,13 @@ jobs:
 
     - name: Merge Configs
       run: |
-        # 1. Add Xiaomi Common features
         cat arch/arm64/configs/vendor/xiaomi_QGKI.config >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
-        
-        # 2. Add Vili (11T Pro) specific features
         cat arch/arm64/configs/vendor/vili_QGKI.config >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
-
-        # 3. Force MemKernel to be a Module
         echo "CONFIG_MEMKERNEL=m" >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
         echo "CONFIG_MEMKERNEL_DRIVER=m" >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
+        
+        # FIX: Ensure DTB building is enabled in the config
+        echo "CONFIG_BUILD_ARM64_DT_OVERLAY=y" >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
 
     - name: Android kernel build
       uses: lemniskett/android-kernel-actions@master
@@ -41,24 +39,26 @@ jobs:
         arch: arm64
         compiler: clang/12
         defconfig: vendor/lahaina-qgki_defconfig
+        # WE EXPLICITLY REQUEST Image.gz-dtb
         image: Image.gz-dtb modules
 
     - name: Package Artifacts
       run: |
-        # Create the directories
         mkdir -p final_artifact/arch/arm64/boot
         mkdir -p final_artifact/drivers
         
-        # Copy the Kernel Image
-        cp out/arch/arm64/boot/Image* final_artifact/arch/arm64/boot/
+        # DEBUG: List all files created to see what we actually have
+        echo "Listing all boot files:"
+        ls -lh out/arch/arm64/boot/
         
-        # FIX: Search for ANY file containing "hazem" and ending in ".ko"
-        # This catches "hazem.ko", "hazem_memk.ko", etc.
+        # COPY: Grab the DTB version explicitly
+        cp out/arch/arm64/boot/Image.gz-dtb final_artifact/arch/arm64/boot/ 2>/dev/null || echo "Image.gz-dtb NOT FOUND"
+        
+        # Backup: Copy raw Image just in case
+        cp out/arch/arm64/boot/Image final_artifact/arch/arm64/boot/
+        
+        # Drivers
         find out -name "*hazem*.ko" -exec cp {} final_artifact/drivers/ \; 2>/dev/null || true
-        
-        # Verify the contents
-        echo "Final Structure:"
-        ls -R final_artifact
 
     - name: Upload Kernel and Module
       uses: actions/upload-artifact@v4
