@@ -41,10 +41,8 @@ jobs:
         arch: arm64
         compiler: clang/12
         defconfig: vendor/lahaina-qgki_defconfig
-        # CRITICAL FIX: 'modules' tells it to build the drivers!
         image: Image.gz-dtb modules
 
-    # NEW STEP: Manually create the folder structure from your screenshot
     - name: Package Artifacts
       run: |
         # Create the directories
@@ -54,11 +52,10 @@ jobs:
         # Copy the Kernel Image
         cp out/arch/arm64/boot/Image* final_artifact/arch/arm64/boot/
         
-        # Find and Copy the MemKernel Module
-        # We use 'find' because the .ko file might be deep inside the out folder
-        find out -name "memkernel.ko" -exec cp {} final_artifact/drivers/ \;
+        # FIX: Added '2>/dev/null || true' to ignore "Permission denied" errors on cache folders
+        find out -name "memkernel.ko" -exec cp {} final_artifact/drivers/ \; 2>/dev/null || true
         
-        # Verify the contents match your screenshot
+        # Verify the contents
         echo "Final Structure:"
         ls -R final_artifact
 
