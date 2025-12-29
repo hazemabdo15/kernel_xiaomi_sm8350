@@ -20,17 +20,14 @@ jobs:
       run: |
         curl -LSs "https://raw.githubusercontent.com/Poko-Apps/MemKernel/main/kernel/setup.sh" | bash -s M hazem
 
-    # FIX START: Manually enable the missing Xiaomi drivers
-    - name: Add Xiaomi Configs
+    # FIX: Merge the device specific config (Vili) into the base config (Lahaina)
+    - name: Merge Configs
       run: |
-        # Enable Xiaomi Hardware ID (Fixes get_hw_version_platform)
-        echo "CONFIG_MI_UTIL=y" >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
-        echo "CONFIG_XIAOMI_HW_ID=y" >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
+        # Append the Xiaomi 11T Pro (Vili) fragment to the main Snapdragon 888 (Lahaina) defconfig
+        cat arch/arm64/configs/vendor/vili_QGKI.config >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
         
-        # Enable Xiaomi Display Features (Fixes mi_disp_register_client)
-        echo "CONFIG_DRM_MI_DISP=y" >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
-        echo "CONFIG_MI_DISP=y" >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
-    # FIX END
+        # Verify it worked by checking for one of the missing symbols
+        grep "CONFIG_MI_DISP" arch/arm64/configs/vendor/lahaina-qgki_defconfig || echo "Warning: Config merge might have failed"
 
     - name: Android kernel build
       uses: lemniskett/android-kernel-actions@master
