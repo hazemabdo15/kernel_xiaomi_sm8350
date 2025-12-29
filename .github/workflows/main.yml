@@ -9,6 +9,12 @@ jobs:
     steps:
     - name: Checkout kernel source
       uses: actions/checkout@v4
+      with:
+        submodules: recursive      # FIX: Downloads the linked KernelSU-Next folder
+        fetch-depth: 0
+
+    - name: Fix Git Safety
+      run: git config --global --add safe.directory /github/workspace
 
     - name: Set up MemKernel as a module (M-OUT) with specified name
       run: |
