@@ -18,7 +18,7 @@ jobs:
 
     - name: Set up MemKernel as a module (M-OUT) with specified name
       run: |
-        curl -LSs "https://raw.githubusercontent.com/Poko-Apps/MemKernel/main/kernel/setup.sh" | bash -s M hazem
+        curl -LSs "https://raw.githubusercontent.com/Poko-Apps/MemKernel/main/kernel/setup.sh" | bash -s M
 
     - name: Merge Configs
       run: |
