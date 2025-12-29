@@ -10,7 +10,7 @@ jobs:
     - name: Checkout kernel source
       uses: actions/checkout@v4
       with:
-        submodules: recursive      # FIX: Downloads the linked KernelSU-Next folder
+        submodules: recursive
         fetch-depth: 0
 
     - name: Fix Git Safety
@@ -19,6 +19,18 @@ jobs:
     - name: Set up MemKernel as a module (M-OUT) with specified name
       run: |
         curl -LSs "https://raw.githubusercontent.com/Poko-Apps/MemKernel/main/kernel/setup.sh" | bash -s M hazem
+
+    # FIX START: Manually enable the missing Xiaomi drivers
+    - name: Add Xiaomi Configs
+      run: |
+        # Enable Xiaomi Hardware ID (Fixes get_hw_version_platform)
+        echo "CONFIG_MI_UTIL=y" >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
+        echo "CONFIG_XIAOMI_HW_ID=y" >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
+        
+        # Enable Xiaomi Display Features (Fixes mi_disp_register_client)
+        echo "CONFIG_DRM_MI_DISP=y" >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
+        echo "CONFIG_MI_DISP=y" >> arch/arm64/configs/vendor/lahaina-qgki_defconfig
+    # FIX END
 
     - name: Android kernel build
       uses: lemniskett/android-kernel-actions@master
