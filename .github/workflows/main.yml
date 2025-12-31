@@ -1,40 +1,39 @@
 name: Build Kernel with Driver Module
 
 on:
-  push:  
+  push: 
     branches: 
       - vili_ksu-302
       - main
   pull_request:
-    branches:  
+    branches: 
       - vili_ksu-302
       - main
   workflow_dispatch:
 
-env:  
+env: 
   KERNEL_VERSION:  "5.4.302"
   ARCH: arm64
-  SUBARCH: arm64
   DEVICE: SM8350
   DEFCONFIG: vendor/lahaina-qgki_defconfig
 
-jobs:
-  build-kernel-with-driver:  
-    runs-on: ubuntu-22.04
+jobs: 
+  build-kernel-with-driver:
+    runs-on:  ubuntu-22.04
     
     steps:
     - name:  Maximize build space
-      uses: easimon/maximize-build-space@master
+      uses:  easimon/maximize-build-space@master
       with: 
         remove-dotnet: true
         remove-android: true
         remove-haskell: true
-        remove-codeql: true
+        remove-codeql:  true
         remove-docker-images: true
 
-    - name: Checkout kernel source
+    - name:  Checkout kernel source
       uses: actions/checkout@v4
-      with: 
+      with:
         repository: hazemabdo15/kernel_xiaomi_sm8350
         ref: vili_ksu-302
         path: kernel
@@ -42,21 +41,20 @@ jobs:
 
     - name:  Checkout driver source
       uses: actions/checkout@v4
-      with:  
+      with:
         repository: hazemabdo15/Kernel_driver_hack
-        path:  Kernel_driver_hack
+        path: Kernel_driver_hack
 
-    - name: Setup build environment
+    - name:  Setup build environment
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev libncurses-dev zip unzip lz4 wget git python3 python3-pip ccache cpio
-        echo "Build environment setup complete"
+        sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev libncurses-dev zip unzip lz4 wget git python3 ccache cpio
 
-    - name: Setup Clang/LLVM toolchain
+    - name: Setup toolchain
       run: |
         cd kernel
         mkdir -p toolchain
-        wget -q https://android. googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r498229.tar.gz -O clang. tar.gz
+        wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r498229.tar.gz -O clang. tar.gz
         mkdir -p toolchain/clang
         tar -xzf clang.tar.gz -C toolchain/clang
         git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 toolchain/gcc-arm64
@@ -65,113 +63,78 @@ jobs:
         echo "GCC_PATH=$(pwd)/toolchain/gcc-arm64/bin" >> $GITHUB_ENV
         echo "GCC32_PATH=$(pwd)/toolchain/gcc-arm32/bin" >> $GITHUB_ENV
 
-    - name:  Integrate kernel driver
+    - name: Integrate driver
       run: |
         cd kernel
         ln -sf ../../Kernel_driver_hack/kernel drivers/khack
         grep -q "khack" drivers/Makefile || echo 'obj-$(CONFIG_KERNEL_HACK) += khack/' >> drivers/Makefile
         grep -q "khack" drivers/Kconfig || sed -i '/endmenu/i source "drivers/khack/Kconfig"' drivers/Kconfig
-        ls -la drivers/khack/
 
     - name: Configure kernel
       run: |
         cd kernel
         export PATH="${CLANG_PATH}:${GCC_PATH}:${GCC32_PATH}:${PATH}"
-        export CROSS_COMPILE=aarch64-linux-android-
-        export CROSS_COMPILE_ARM32=arm-linux-androideabi-
-        export CLANG_TRIPLE=aarch64-linux-gnu-
-        make ARCH=arm64 CC=clang LLVM=1 O=out vendor/lahaina-qgki_defconfig
+        make ARCH=arm64 CC=clang LLVM=1 CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- CLANG_TRIPLE=aarch64-linux-gnu- O=out vendor/lahaina-qgki_defconfig
         ./scripts/config --file out/.config --module KERNEL_HACK
         make ARCH=arm64 CC=clang LLVM=1 O=out olddefconfig
-        grep "CONFIG_KERNEL_HACK" out/.config
 
-    - name: Build kernel Image
+    - name: Build kernel
       run: |
         cd kernel
         export PATH="${CLANG_PATH}:${GCC_PATH}:${GCC32_PATH}:${PATH}"
-        export CROSS_COMPILE=aarch64-linux-android-
-        export CROSS_COMPILE_ARM32=arm-linux-androideabi-
-        export CLANG_TRIPLE=aarch64-linux-gnu-
-        make ARCH=arm64 CC=clang LLVM=1 O=out -j$(nproc) Image
+        make ARCH=arm64 CC=clang LLVM=1 CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- CLANG_TRIPLE=aarch64-linux-gnu- O=out -j$(nproc) Image dtbs modules
 
-    - name: Build device tree blobs
+    - name: Extract driver module
       run: |
         cd kernel
-        export PATH="${CLANG_PATH}:${GCC_PATH}:${GCC32_PATH}:${PATH}"
-        export CROSS_COMPILE=aarch64-linux-android-
-        export CROSS_COMPILE_ARM32=arm-linux-androideabi-
-        export CLANG_TRIPLE=aarch64-linux-gnu-
-        make ARCH=arm64 CC=clang LLVM=1 O=out -j$(nproc) dtbs
-
-    - name: Build kernel modules
-      run: |
-        cd kernel
-        export PATH="${CLANG_PATH}:${GCC_PATH}:${GCC32_PATH}:${PATH}"
-        export CROSS_COMPILE=aarch64-linux-android-
-        export CROSS_COMPILE_ARM32=arm-linux-androideabi-
-        export CLANG_TRIPLE=aarch64-linux-gnu-
-        make ARCH=arm64 CC=clang LLVM=1 O=out -j$(nproc) modules
-
-    - name: Verify and extract driver module
-      run: |
-        cd kernel
-        DRIVER_KO=$(find out -name "my_driver.ko" -type f | head -n 1)
-        if [ -z "$DRIVER_KO" ]; then
-          echo "Driver module not found"
-          find out -name "*. ko" -path "*/drivers/khack/*"
-          exit 1
-        fi
-        cp "$DRIVER_KO" out/my_driver.ko
+        find out -name "my_driver. ko" -exec cp {} out/my_driver.ko \;
         ls -lh out/my_driver.ko
-        MODULE_SIZE=$(stat -c%s out/my_driver.ko)
-        echo "MODULE_SIZE=$MODULE_SIZE" >> $GITHUB_ENV
 
-    - name:  Prepare AnyKernel3 flashable zip
+    - name: Create AnyKernel3 script
       run: |
         cd kernel
         git clone --depth=1 https://github.com/osm0sis/AnyKernel3
-        rm -f AnyKernel3/Image AnyKernel3/*. dtb
-        cp out/arch/arm64/boot/Image AnyKernel3/
-        [ -d "out/arch/arm64/boot/dts/vendor/qcom" ] && cp out/arch/arm64/boot/dts/vendor/qcom/*. dtb AnyKernel3/ 2>/dev/null || true
-        mkdir -p AnyKernel3/modules/system/lib/modules
-        cp out/my_driver. ko AnyKernel3/modules/system/lib/modules/
         cd AnyKernel3
-        cat > anykernel.sh << 'EOF'
-# AnyKernel3 Ramdisk Mod Script
-properties() {
-kernel.string=Kernel with Driver by hazemabdo15
-do. devicecheck=1
-do.modules=1
-do.systemless=1
-do.cleanup=1
-do.cleanuponabort=0
-device.name1=vili
-device.name2=SM8350
-supported.versions=11-14
-supported.patchlevels=
-}
-block=/dev/block/bootdevice/by-name/boot;
-is_slot_device=1;
-ramdisk_compression=auto;
-patch_vbmeta_flag=auto;
-.  tools/ak3-core.sh;
-dump_boot;
-write_boot;
-EOF
+        rm -f Image *.dtb
+        echo 'properties() {' > anykernel.sh
+        echo 'kernel.string=Kernel with Driver by hazemabdo15' >> anykernel.sh
+        echo 'do. devicecheck=1' >> anykernel.sh
+        echo 'do.modules=1' >> anykernel.sh
+        echo 'do.systemless=1' >> anykernel.sh
+        echo 'do.cleanup=1' >> anykernel.sh
+        echo 'do.cleanuponabort=0' >> anykernel.sh
+        echo 'device.name1=vili' >> anykernel.sh
+        echo 'device.name2=SM8350' >> anykernel.sh
+        echo 'supported.versions=11-14' >> anykernel.sh
+        echo 'supported.patchlevels=' >> anykernel.sh
+        echo '}' >> anykernel.sh
+        echo 'block=/dev/block/bootdevice/by-name/boot;' >> anykernel.sh
+        echo 'is_slot_device=1;' >> anykernel.sh
+        echo 'ramdisk_compression=auto;' >> anykernel.sh
+        echo 'patch_vbmeta_flag=auto;' >> anykernel.sh
+        echo '. tools/ak3-core. sh;' >> anykernel. sh
+        echo 'dump_boot;' >> anykernel. sh
+        echo 'write_boot;' >> anykernel. sh
+
+    - name: Package flashable zip
+      run: |
+        cd kernel/AnyKernel3
+        cp ../out/arch/arm64/boot/Image . 
+        find ../out/arch/arm64/boot/dts -name "*.dtb" -exec cp {} . \; 2>/dev/null || true
+        mkdir -p modules/system/lib/modules
+        cp ../out/my_driver.ko modules/system/lib/modules/
         zip -r9 ../kernel-sm8350-with-driver.zip * -x . git README.md *placeholder
-        cd ..
-        ls -lh kernel-sm8350-with-driver.zip
 
     - name: Upload kernel Image
       uses: actions/upload-artifact@v4
-      with:  
+      with: 
         name: kernel-Image-sm8350
-        path:  kernel/out/arch/arm64/boot/Image
-        retention-days: 30
+        path: kernel/out/arch/arm64/boot/Image
+        retention-days:  30
 
     - name: Upload driver module
       uses: actions/upload-artifact@v4
-      with: 
+      with:
         name: my_driver-module-sm8350
         path: kernel/out/my_driver.ko
         retention-days: 30
@@ -183,23 +146,14 @@ EOF
         path: kernel/kernel-sm8350-with-driver.zip
         retention-days: 90
 
-    - name: Generate build summary
+    - name: Build summary
       run: |
         echo "## Build Complete" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Build Information" >> $GITHUB_STEP_SUMMARY
-        echo "- Kernel Version: 5.4.302" >> $GITHUB_STEP_SUMMARY
-        echo "- Device:  Xiaomi SM8350 (VILI)" >> $GITHUB_STEP_SUMMARY
-        echo "- Module Size: ${{ env.MODULE_SIZE }} bytes" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
-        echo "1. kernel-flashable-zip-sm8350 - Flash via recovery" >> $GITHUB_STEP_SUMMARY
-        echo "2. my_driver-module-sm8350 - Standalone module" >> $GITHUB_STEP_SUMMARY
-        echo "3. kernel-Image-sm8350 - Raw kernel" >> $GITHUB_STEP_SUMMARY
+        echo "- kernel-flashable-zip-sm8350.zip - Flash via recovery" >> $GITHUB_STEP_SUMMARY
+        echo "- my_driver-module-sm8350 - Standalone module" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Usage" >> $GITHUB_STEP_SUMMARY
-        echo '```bash' >> $GITHUB_STEP_SUMMARY
-        echo "# Flash the zip via recovery, then:" >> $GITHUB_STEP_SUMMARY
-        echo "adb shell su -c 'insmod /system/lib/modules/my_driver.ko'" >> $GITHUB_STEP_SUMMARY
-        echo "adb shell su -c 'lsmod | grep my_driver'" >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo "After flashing, load driver with:" >> $GITHUB_STEP_SUMMARY
+        echo "adb shell su -c insmod /system/lib/modules/my_driver.ko" >> $GITHUB_STEP_SUMMARY
