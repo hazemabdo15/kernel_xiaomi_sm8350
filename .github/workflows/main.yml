@@ -1,4 +1,4 @@
-name: Build Kernel V5 (Code Patch Fix)
+name: Build Kernel V6 (Final Driver Patch)
 
 on:
   workflow_dispatch:
@@ -31,14 +31,19 @@ jobs:
       run: |
         git clone --depth=1 https://github.com/kdrag0n/proton-clang clang
 
-    - name: 5. Patch Driver Code (The New Fix)
+    - name: 5. Patch Driver Code (The Fix)
       run: |
-        echo "Patching 'SEND_SIG_FORCED' to 'SEND_SIG_PRIV'..."
-        # This replaces the old constant with the correct one for Kernel 5.4
+        echo "Patching 'SEND_SIG_FORCED'..."
         sed -i 's/SEND_SIG_FORCED/SEND_SIG_PRIV/g' driver_source/kernel/entry.c
         
-        # Verify the change happened
-        grep "SEND_SIG_PRIV" driver_source/kernel/entry.c || echo "Warning: Patch might have failed, check file content."
+        echo "Patching 'access_ok' for Kernel 5.4..."
+        # This removes the first argument (VERIFY_WRITE/READ) from the function call
+        # Old: access_ok(VERIFY_WRITE, addr, size) -> New: access_ok(addr, size)
+        sed -i 's/access_ok(VERIFY_WRITE, /access_ok(/g' driver_source/kernel/anti_ptrace_detection.c
+        sed -i 's/access_ok(VERIFY_READ, /access_ok(/g' driver_source/kernel/anti_ptrace_detection.c
+        
+        # Also clean up any extra spaces if they exist
+        sed -i 's/access_ok(VERIFY_WRITE,/access_ok(/g' driver_source/kernel/anti_ptrace_detection.c
 
     - name: 6. Configure & Build Kernel
       run: |
@@ -57,21 +62,17 @@ jobs:
         cd kernel_source
         mkdir -p ../out
         
-        # 1. Base Config
         echo "Loading Base: lahaina-qgki_defconfig..."
         make O=../out LLVM=1 vendor/lahaina-qgki_defconfig
         
-        # 2. Xiaomi Common Config (Fixes linker errors)
         echo "Merging Xiaomi Common..."
         if [ -f "arch/arm64/configs/vendor/xiaomi_QGKI.config" ]; then
             ./scripts/kconfig/merge_config.sh -O ../out -m ../out/.config arch/arm64/configs/vendor/xiaomi_QGKI.config
         fi
 
-        # 3. Vili Config
         echo "Merging Vili Specifics..."
         ./scripts/kconfig/merge_config.sh -O ../out -m ../out/.config arch/arm64/configs/vendor/vili_QGKI.config
         
-        # 4. Performance Config
         if [ -f "arch/arm64/configs/vendor/lahaina_consolidate.config" ]; then
             echo "Merging Performance Config..."
             ./scripts/kconfig/merge_config.sh -O ../out -m ../out/.config arch/arm64/configs/vendor/lahaina_consolidate.config
@@ -79,11 +80,10 @@ jobs:
         
         make O=../out LLVM=1 olddefconfig
 
-        # 5. Enable KernelSU
+        # Enable KernelSU
         ./scripts/config --file ../out/.config -e CONFIG_KSU
         ./scripts/config --file ../out/.config -e CONFIG_KSU_SUSFS
 
-        # 6. Build Kernel
         echo "Building Kernel..."
         make O=../out LLVM=1 -j$(nproc --all) Image modules
 
