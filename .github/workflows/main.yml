@@ -1,4 +1,4 @@
-name: Build Kernel V4 (Linker Fix)
+name: Build Kernel V5 (Code Patch Fix)
 
 on:
   workflow_dispatch:
@@ -31,7 +31,16 @@ jobs:
       run: |
         git clone --depth=1 https://github.com/kdrag0n/proton-clang clang
 
-    - name: 5. Configure & Build Kernel
+    - name: 5. Patch Driver Code (The New Fix)
+      run: |
+        echo "Patching 'SEND_SIG_FORCED' to 'SEND_SIG_PRIV'..."
+        # This replaces the old constant with the correct one for Kernel 5.4
+        sed -i 's/SEND_SIG_FORCED/SEND_SIG_PRIV/g' driver_source/kernel/entry.c
+        
+        # Verify the change happened
+        grep "SEND_SIG_PRIV" driver_source/kernel/entry.c || echo "Warning: Patch might have failed, check file content."
+
+    - name: 6. Configure & Build Kernel
       run: |
         export PATH=$(pwd)/clang/bin:$PATH
         export ARCH=arm64
@@ -48,24 +57,21 @@ jobs:
         cd kernel_source
         mkdir -p ../out
         
-        # 1. Load BASE (Snapdragon 888)
+        # 1. Base Config
         echo "Loading Base: lahaina-qgki_defconfig..."
         make O=../out LLVM=1 vendor/lahaina-qgki_defconfig
         
-        # 2. Merge XIAOMI COMMON (The Missing Link!)
-        # This enables 'mi_disp' and 'get_hw_version'
+        # 2. Xiaomi Common Config (Fixes linker errors)
         echo "Merging Xiaomi Common..."
         if [ -f "arch/arm64/configs/vendor/xiaomi_QGKI.config" ]; then
             ./scripts/kconfig/merge_config.sh -O ../out -m ../out/.config arch/arm64/configs/vendor/xiaomi_QGKI.config
-        else
-            echo "⚠️ xiaomi_QGKI.config not found. Build might fail!"
         fi
 
-        # 3. Merge DEVICE SPECIFIC (Vili)
+        # 3. Vili Config
         echo "Merging Vili Specifics..."
         ./scripts/kconfig/merge_config.sh -O ../out -m ../out/.config arch/arm64/configs/vendor/vili_QGKI.config
         
-        # 4. Merge PERFORMANCE (Consolidate)
+        # 4. Performance Config
         if [ -f "arch/arm64/configs/vendor/lahaina_consolidate.config" ]; then
             echo "Merging Performance Config..."
             ./scripts/kconfig/merge_config.sh -O ../out -m ../out/.config arch/arm64/configs/vendor/lahaina_consolidate.config
@@ -77,12 +83,11 @@ jobs:
         ./scripts/config --file ../out/.config -e CONFIG_KSU
         ./scripts/config --file ../out/.config -e CONFIG_KSU_SUSFS
 
-        # 6. Build
-        # Removed dtbo.img to prevent errors, just building Image + Modules
+        # 6. Build Kernel
         echo "Building Kernel..."
         make O=../out LLVM=1 -j$(nproc --all) Image modules
 
-    - name: 6. Build Your Custom Driver
+    - name: 7. Build Your Custom Driver
       run: |
         export PATH=$(pwd)/clang/bin:$PATH
         export ARCH=arm64
@@ -98,12 +103,11 @@ jobs:
         echo "Building External Driver..."
         make -C $KERNEL_SRC O=$OUT_DIR M=$DRIVER_SRC LLVM=1 modules
 
-    - name: 7. Package Everything
+    - name: 8. Package Everything
       run: |
         mkdir -p release/modules
         cp out/arch/arm64/boot/Image release/
         
-        # Copy Drivers
         find driver_source -name "*.ko" -exec cp {} release/modules/ \;
         find out/drivers -name "*.ko" -exec cp {} release/modules/ \;
         find out/techpack -name "*.ko" -exec cp {} release/modules/ \;
@@ -111,5 +115,5 @@ jobs:
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: Vili_Kernel_Fixed
+        name: Vili_Kernel_Repaired
         path: release/
