@@ -1,4 +1,4 @@
-name: Build Kernel V3 (Fixed GCC & Targets)
+name: Build Kernel V4 (Linker Fix)
 
 on:
   workflow_dispatch:
@@ -25,7 +25,6 @@ jobs:
     - name: 3. Install Build Tools
       run: |
         sudo apt-get update
-        # Installs the correct ARM64 GCC compiler available on Ubuntu
         sudo apt-get install -y git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev bc wget python3 gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
     - name: 4. Download Proton Clang
@@ -37,7 +36,6 @@ jobs:
         export PATH=$(pwd)/clang/bin:$PATH
         export ARCH=arm64
         export SUBARCH=arm64
-        # FIX: Point to the installed system GCC
         export CROSS_COMPILE=aarch64-linux-gnu-
         export CC=clang
         export LD=ld.lld
@@ -48,15 +46,26 @@ jobs:
         export STRIP=llvm-strip
         
         cd kernel_source
-        
         mkdir -p ../out
         
-        echo "Loading Configuration..."
+        # 1. Load BASE (Snapdragon 888)
+        echo "Loading Base: lahaina-qgki_defconfig..."
         make O=../out LLVM=1 vendor/lahaina-qgki_defconfig
         
+        # 2. Merge XIAOMI COMMON (The Missing Link!)
+        # This enables 'mi_disp' and 'get_hw_version'
+        echo "Merging Xiaomi Common..."
+        if [ -f "arch/arm64/configs/vendor/xiaomi_QGKI.config" ]; then
+            ./scripts/kconfig/merge_config.sh -O ../out -m ../out/.config arch/arm64/configs/vendor/xiaomi_QGKI.config
+        else
+            echo "⚠️ xiaomi_QGKI.config not found. Build might fail!"
+        fi
+
+        # 3. Merge DEVICE SPECIFIC (Vili)
         echo "Merging Vili Specifics..."
         ./scripts/kconfig/merge_config.sh -O ../out -m ../out/.config arch/arm64/configs/vendor/vili_QGKI.config
         
+        # 4. Merge PERFORMANCE (Consolidate)
         if [ -f "arch/arm64/configs/vendor/lahaina_consolidate.config" ]; then
             echo "Merging Performance Config..."
             ./scripts/kconfig/merge_config.sh -O ../out -m ../out/.config arch/arm64/configs/vendor/lahaina_consolidate.config
@@ -64,13 +73,13 @@ jobs:
         
         make O=../out LLVM=1 olddefconfig
 
-        echo "Enabling KernelSU..."
+        # 5. Enable KernelSU
         ./scripts/config --file ../out/.config -e CONFIG_KSU
         ./scripts/config --file ../out/.config -e CONFIG_KSU_SUSFS
 
+        # 6. Build
+        # Removed dtbo.img to prevent errors, just building Image + Modules
         echo "Building Kernel..."
-        # FIX: Removed 'dtbo.img' target. 
-        # Only building 'Image' and 'modules' is sufficient for your driver hack.
         make O=../out LLVM=1 -j$(nproc --all) Image modules
 
     - name: 6. Build Your Custom Driver
@@ -92,21 +101,15 @@ jobs:
     - name: 7. Package Everything
       run: |
         mkdir -p release/modules
-        
         cp out/arch/arm64/boot/Image release/
         
-        # We removed dtbo.img build, so we don't copy it. 
-        # Use the dtbo.img already on your phone (it rarely changes).
-        
-        # Copy custom driver
+        # Copy Drivers
         find driver_source -name "*.ko" -exec cp {} release/modules/ \;
-        
-        # Copy standard drivers
         find out/drivers -name "*.ko" -exec cp {} release/modules/ \;
         find out/techpack -name "*.ko" -exec cp {} release/modules/ \;
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: Vili_Kernel_Final
+        name: Vili_Kernel_Fixed
         path: release/
